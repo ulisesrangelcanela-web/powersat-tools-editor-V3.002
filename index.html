@@ -847,16 +847,26 @@ generatePDF.addEventListener("click", async () => {
   pdf.addImage(img, "PNG", 0, 0, 820, 1050);
 
   const blob = pdf.output("blob");
-  const url = URL.createObjectURL(blob);
+const url = URL.createObjectURL(blob);
 
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+if (isIOS) {
+  // iOS: abrir PDF en nueva pestaña (NO descarga)
+  window.open(url, "_blank");
+} else {
+  // Desktop: descarga normal
   const a = document.createElement("a");
   a.href = url;
   a.download = `${fileName}.pdf`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
 
-  URL.revokeObjectURL(url);
+// liberar memoria después
+setTimeout(() => URL.revokeObjectURL(url), 1000);
+
 });
 
    // ← AQUÍ SE CIERRA EL BLOQUE DEL PDF (faltaba)
@@ -931,3 +941,4 @@ document.getElementById("copyTitle").addEventListener("click", () => {
 </script>
 </body>
 </html>
+
