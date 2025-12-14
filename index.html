@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Powersat Service Ticket Editor</title>
+
+<!-- Librerías para exportar PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+  :root{ --accent:#0b63d8; --muted:#444; --card:#fff; }
+  body{font-family:Arial, Helvetica, sans-serif; background:#f3f5f8; margin:16px; color:#111;}
+  .container{display:flex; gap:18px; align-items:flex-start;}
+  .panel{background:var(--card); padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06);}
+
+  .panel.preview-wrap{
+    padding:0;
+    border:none;
+    box-shadow:none;
+  }
+
+  .form{width:380px; max-height:86vh; overflow:auto;}
+  label{
+  display:block;
+  margin-top:8px;
+  font-size:12px;        /* ↓ más pequeño */
+  font-weight:600;       /* sigue legible */
+  letter-spacing:0.4px;  /* look más profesional */
+  color:#555;
+  }
+
+
+  input[type="text"],
+  input[type="time"],
+  input[type="date"],
+  select,
+  textarea{
+  width:100%;
+  padding:9px 10px;
+  margin-top:4px;
+  border:1px solid #ddd;
+  border-radius:6px;
+  box-sizing:border-box;
+  text-transform:uppercase;
+
+  font-size:15px;   /* <--MÁS GRANDE */
+  font-weight:500;
+}
+
+
+  .btn{
+    display:inline-block;
+    padding:8px 10px;
+    margin-top:8px;
+    border-radius:6px;
+    cursor:pointer;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+  }
+
+  .preview-wrap{flex:1; max-width:824px;}
+
+  .ticket-canvas{
+    width:820px;
+    height:1050px;
+    background:#fff;
+    border:1px solid #ccc;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .ticket-bg{
+    position:absolute;
+    top:0; left:0;
+    width:100%; height:100%;
+    object-fit:contain;
+    pointer-events:none;
+  }
+
+  .overlay{
+    position:absolute;
+    pointer-events:none;
+    color:#000;
+    font-size:15px;
+    white-space:pre-wrap;
+    text-transform:uppercase;
+  }
+
+  #folioOverlay{ right:45px; top:60px; font-weight:700; font-size:16px; }
+  #stateCodeOverlay{ right:97px; top:60px; font-size:16px; font-weight:600; }
+
+  #customerNameOverlay{ top:120px; left:17%; transform:translateX(-50%); text-align:center; }
+  #rigNameOverlay{ top:120px; left:50%; transform:translateX(-50%); text-align:center; }
+  #wellNameOverlay{ top:162px; left:50%; transform:translateX(-50%); text-align:center; }
+  #parishOverlay{ top:202px; left:50%; transform:translateX(-50%); text-align:center; }
+
+  #dateOverlay{ top:120px; left:82%; transform:translateX(-50%); text-align:center; }
+  #techOverlay{ top:238px; left:83%; transform:translateX(-50%); text-align:center; }
+
+  #serviceTypeOverlay{
+    left:40px; right:391px; top:585px;
+    font-size:15px; font-weight:400; text-align:left;
+  }
+
+ 
+  #commentsOverlay{
+    top:609px;
+    left:23%;
+    transform:translateX(-50%);
+    width:300px;
+    height:126px;     /* antes 300px */
+    overflow-y:hidden;  /* antes hidden */
+    font-size:15px;
+    line-height:1.8;
+}
+
+
+  #wcOverlay{ left:45px; top:755px; }
+  #aOverlay{ left:45px; top:783px; }
+  #dOverlay{ left:45px; top:810px; }
+  #rtOverlay{ left:45px; top:832px; }
+
+  @media(max-width:1100px){
+    .ticket-canvas{ transform:scale(0.85); transform-origin:top left; }
+  }
+
+  /* ======== RESPONSIVE PARA CELULARES ======== */
+  @media (max-width: 768px) {
+    body {
+      margin: 8px;
+      overflow-x: hidden;
+    }
+    .container {
+      flex-direction: column;
+      gap: 20px;
+    }
+    .form {
+      width: 100% !important;
+      max-height: unset !important;
+    }
+    .preview-wrap {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: auto;
+    }
+    .ticket-canvas {
+      transform: scale(0.52);
+      transform-origin: top left;
+      width: 820px;
+      height: 1050px;
+      margin-bottom: 30px;
+    }
+  }
+
+  /* ===== Modal Responsive Fix ===== */
+  #trelloModal {
+    display:none;
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    background:rgba(0,0,0,0.5);
+    backdrop-filter:blur(4px);
+    z-index:9999;
+    overflow:auto;
+    padding:20px;
+  }
+
+  #trelloModal .modal-box {
+    background:white;
+    width:90%;
+    max-width:420px;
+    margin:auto;
+    margin-top:40px;
+    padding:15px;
+    border-radius:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.35);
+    max-height:90vh;
+    overflow-y:auto;
+  }
+
+  #trelloModal textarea {
+    width:100%;
+    height:220px;
+    font-size:15px;
+    padding:8px;
+    text-transform:uppercase;
+  }
+
+  .modal-buttons {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* FIX ESPECIAL PARA CELULARES PEQUEÑOS */
+  @media (max-width: 480px) {
+    #trelloModal .modal-box {
+      width: 85%;
+      max-width: 310px;
+      margin-top: 20px;
+      padding: 10px;
+    }
+    #trelloModal textarea {
+      height: 160px;
+      font-size: 14px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div style="display:flex; gap:12px; align-items:center; margin-bottom:10px;">
+  <h3 style="margin:0; text-transform:uppercase;">POWERSAT SERVICE TICKET EDITOR</h3>
+  <div class="small">Fill out the fields and generate your PDF.</div>
+</div>
+
+<div class="container">
+
+  <div class="panel form">
+
+    <button id="locBtn" type="button" class="btn">GET GPS LOCATION</button>
+
+    <label>FOLIO</label>
+    <input id="folioInput" type="text" maxlength="5" inputmode="numeric" />
+
+    <label>STATE CODE</label>
+    <input id="stateCodeInput" type="text" maxlength="3" />
+
+    <label>CUSTOMER NAME</label>
+    <input id="customerInput" type="text" />
+
+    <label>RIG NAME</label>
+    <input id="rigInput" type="text" />
+
+    <label>WELL NAME</label>
+    <input id="wellInput" type="text" />
+
+    <label>PARISH / COUNTY</label>
+    <input id="parishInput" type="text" />
+
+    <label>DATE</label>
+    <input id="dateInput" type="date" />
+
+    <label>TECHNICIAN</label>
+    <input id="techInput" type="text" />
+
+    <label>SERVICE TYPE</label>
+    <!-- el contenido se llena desde JS según sea SUNBELT o GENERAL -->
+    <select id="serviceSelect"></select>
+
+    
+    <label>COMMENTS (SHORT)</label>
+    <select id="predComment">
+      <option value="">-- QUICK COMMENT --</option>
+      <option>OFFICE TRAILER</option>
+      <option>GENERATOR</option>
+      <option>TOWER</option>
+      <option>RIGS</option>
+      <option>COMM TOWER</option>
+      <option>COMM PACKAGES</option>
+      <option>BOOSTERS</option>
+      <option>PACKAGES</option>
+    </select>
+    <textarea id="descInput" rows="4"></textarea>
+
+    <label>W/C - $</label>
+    <input id="wcInput" type="text" />
+
+    <label>ARRIVAL TIME (A)</label>
+    <input id="aInput" type="time" />
+
+    <label>DEPARTURE TIME (D)</label>
+    <input id="dInput" type="time" />
+
+    <label>HQ COORDINATES (LAT,LON)</label>
+    <input id="hqAddr" type="text" value="32.700957173569805, -103.1492677516" />
+
+    <label>JOB LOCATION (LAT,LON)</label>
+    <input id="workAddr" type="text" />
+
+    <label>R/T - MILES</label>
+    <input id="rtManual" type="text" maxlength="5" inputmode="numeric" />
+
+    <div style="margin-top:10px;">
+      <button id="fillBtn" class="btn">TRELLO / CALENDAR</button>
+      <button id="generatePDF" class="btn" style="background:#0a8">GENERATE PDF</button>
+      <button id="copyTitle" class="btn" style="background:#0057ff;">COPY TITLE</button>
+      <button id="downloadJSON" class="btn" style="background:#777">EXPORT JSON</button>
+    </div>
+
+    <hr />
+    <div class="small"><b>UPLOAD FORM IMAGE</b></div>
+    <input id="bgInput" type="file" accept="image/*" />
+  </div>
+
+  <div class="panel preview-wrap">
+    <div id="ticketCanvas" class="ticket-canvas">
+
+      <img id="ticketImg" class="ticket-bg" src="" />
+
+      <div id="folioOverlay" class="overlay"></div>
+      <div id="stateCodeOverlay" class="overlay"></div>
+      <div id="customerNameOverlay" class="overlay"></div>
+      <div id="rigNameOverlay" class="overlay"></div>
+      <div id="wellNameOverlay" class="overlay"></div>
+      <div id="parishOverlay" class="overlay"></div>
+      <div id="serviceTypeOverlay" class="overlay"></div>
+
+      <div id="dateOverlay" class="overlay"></div>
+      <div id="techOverlay" class="overlay"></div>
+      <div id="commentsOverlay" class="overlay"></div>
+
+      <div id="wcOverlay" class="overlay"></div>
+      <div id="aOverlay" class="overlay"></div>
+      <div id="dOverlay" class="overlay"></div>
+      <div id="rtOverlay" class="overlay"></div>
+      <div id="companyStampOverlay" class="overlay"></div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal OILFIELD -->
+<div id="trelloModal">
+  <div class="modal-box">
+    <h3 style="margin:5px 0 10px 0; text-transform:uppercase;">OPERATIONS NOTE</h3>
+    <textarea id="trelloText"></textarea>
+    <div class="modal-buttons">
+      <button id="copyTrello" class="btn" style="background:#0a8;">COPY</button>
+      <button id="closeModal" class="btn" style="background:#777;">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Ruta por defecto */
+const DEFAULT_BG_PATH = "formatoOriginal.jpeg";
+
+
+const EARTH_RADIUS_MI = 3958.8;
+
+
+/* ==== DEFINICIÓN GENERAL DE SERVICIOS ==== */
+const SERVICES = [
+
+  {
+    groupLabel: "--OFFICE TRAILER--",
+    items: [
+      { code:"OFC_NEW_RIG_UP",   label:"NEW RIG UP - OFFICE TRAILER",   price:"400" },
+      { code:"OFC_RIG_UP",       label:"RIG UP - OFFICE TRAILER",       price:"400" },
+      { code:"OFC_RIG_OUT",      label:"RIG OUT - OFFICE TRAILER",      price:"350" },
+      { code:"OFC_RELEASE",      label:"RELEASE - OFFICE TRAILER",      price:"350" },
+      { code:"OFC_RIG_DOWN",     label:"RIG DOWN - OFFICE TRAILER",     price:"350" },
+      { code:"OFC_RIG_MOVE",     label:"RIG MOVE - OFFICE TRAILER",     price:"400" },
+      { code:"OFC_SERVICE_CALL", label:"SERVICE CALL - OFFICE TRAILER", price:"N/C" },
+      { code:"OFC_CHECK_NET",    label:"CHECK NET - OFFICE TRAILER",    price:"N/C" },
+      { code:"OFC_CHECK_DTV",    label:"CHECK DIRECTV - OFFICE TRAILER",price:"N/C" }
+    ]
+  },
+
+  {
+    groupLabel: "--GENERATOR--",
+    items: [
+      { code:"GEN_NEW_RIG_UP",   label:"NEW RIG UP - GENERATOR",   price:"400" },
+      { code:"GEN_RIG_UP",       label:"RIG UP - GENERATOR",       price:"400" },
+      { code:"GEN_RIG_OUT",      label:"RIG OUT - GENERATOR",      price:"350" },
+      { code:"GEN_RELEASE",      label:"RELEASE - GENERATOR",      price:"350" },
+      { code:"GEN_RIG_DOWN",     label:"RIG DOWN - GENERATOR",     price:"350" },
+      { code:"GEN_RIG_MOVE",     label:"RIG MOVE - GENERATOR",     price:"400" },
+      { code:"GEN_SERVICE_CALL", label:"SERVICE CALL - GENERATOR", price:"N/C" }
+    ]
+  },
+
+  {
+    groupLabel: "--TOWER--",
+    items: [
+      { code:"TWR_NEW_RIG_UP",   label:"NEW RIG UP - TOWER",        price:"650" },
+      { code:"TWR_RIG_UP",       label:"RIG UP - TOWER",            price:"650" },
+      { code:"TWR_RIG_OUT",      label:"RIG OUT - TOWER",           price:"450" },
+      { code:"TWR_RELEASE",      label:"RELEASE - TOWER",           price:"450" },
+      { code:"TWR_RIG_DOWN",     label:"RIG DOWN - TOWER",          price:"450" },
+      { code:"TWR_TILT",         label:"TILT DOWN & UP - TOWER",    price:"450" },
+      { code:"TWR_SERVICE_CALL", label:"SERVICE CALL - TOWER",      price:"N/C" },
+      { code:"TWR_CHECK_NET",    label:"CHECK NET - TOWER",         price:"N/C" },
+      { code:"TWR_SITE_CHECK",   label:"SITE CHECK - TOWER",        price:"N/C" }
+    ]
+  },
+
+  {
+    groupLabel: "--RIGS--",
+    items: [
+      { code:"RIG_NEW_RIG_UP",      label:"NEW RIG UP",              price:"450" },
+      { code:"RIG_RIG_UP",          label:"RIG UP",                  price:"400" },
+      { code:"RIG_RIG_DOWN",        label:"RIG DOWN",                price:"350" },
+      { code:"RIG_RIG_UP_AMOVE",    label:"RIG UP AFTER MOVE",       price:"400" },
+      { code:"RIG_RIG_DOWN_FMOVE",  label:"RIG DOWN FOR MOVE",       price:"350" },
+      { code:"RIG_RIG_OUT",         label:"RIG OUT",                 price:"350" },
+      { code:"RIG_RELEASE",         label:"RELEASE",                 price:"350" },
+      { code:"RIG_NEW_INTERCOM",    label:"NEW INTERCOM",            price:"400" },
+      { code:"RIG_NEW_MICRO",       label:"NEW MICRO CELL BOOSTER",  price:"400" },
+      { code:"RIG_NEW_SHACK",       label:"NEW SHACK BOOSTER",       price:"400" },
+      { code:"RIG_SERVICE_CALL",    label:"SERVICE CALL",            price:"N/C" },
+      { code:"RIG_CHECK_NET",       label:"CHECK NET",               price:"N/C" },
+      { code:"RIG_CHECK_SHACK",     label:"CHECK SHACK BOOSTER",     price:"N/C" },
+      { code:"RIG_SITE_CHECK",      label:"SITE CHECK",              price:"N/C" },
+      { code:"RIG_SPECIAL",         label:"SPECIAL SERVICES",        price:"500" }
+    ]
+  }
+
+];
+
+
+/* Bind DOM */
+const folioInput      = document.getElementById('folioInput');
+const stateCodeInput  = document.getElementById('stateCodeInput');
+const customerInput   = document.getElementById('customerInput');
+const rigInput        = document.getElementById('rigInput');
+const wellInput       = document.getElementById('wellInput');
+const parishInput     = document.getElementById('parishInput');
+const dateInput       = document.getElementById('dateInput');
+const techInput       = document.getElementById('techInput');
+const serviceSelect   = document.getElementById('serviceSelect');
+const predComment     = document.getElementById('predComment');
+const descInput       = document.getElementById('descInput');
+const wcInput         = document.getElementById('wcInput');
+const aInput          = document.getElementById('aInput');
+const dInput          = document.getElementById('dInput');
+
+const hqAddr          = document.getElementById('hqAddr');
+const workAddr        = document.getElementById('workAddr');
+const rtManual        = document.getElementById('rtManual');
+
+const fillBtn         = document.getElementById('fillBtn');
+const generatePDF     = document.getElementById('generatePDF');
+const downloadJSON    = document.getElementById('downloadJSON');
+const bgInput         = document.getElementById('bgInput');
+const ticketImg       = document.getElementById('ticketImg');
+const locBtn          = document.getElementById('locBtn');
+
+/* Overlays */
+const folioOverlay        = document.getElementById('folioOverlay');
+const stateCodeOverlay    = document.getElementById('stateCodeOverlay');
+const customerNameOverlay = document.getElementById('customerNameOverlay');
+const rigNameOverlay      = document.getElementById('rigNameOverlay');
+const wellNameOverlay     = document.getElementById('wellNameOverlay');
+const parishOverlay       = document.getElementById('parishOverlay');
+const dateOverlay         = document.getElementById('dateOverlay');
+const techOverlay         = document.getElementById('techOverlay');
+const serviceTypeOverlay  = document.getElementById('serviceTypeOverlay');
+const commentsOverlay     = document.getElementById('commentsOverlay');
+
+const wcOverlay           = document.getElementById('wcOverlay');
+const aOverlay            = document.getElementById('aOverlay');
+const dOverlay            = document.getElementById('dOverlay');
+const rtOverlay           = document.getElementById('rtOverlay');
+const stampOverlay        = document.getElementById('companyStampOverlay');
+
+
+
+function buildServiceOptions() {
+
+  serviceSelect.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "-- SELECT SERVICE --";
+  placeholder.disabled = true;
+  placeholder.selected = true;
+
+  serviceSelect.appendChild(placeholder);
+
+  SERVICES.forEach(group => {
+    const og = document.createElement("optgroup");
+    og.label = group.groupLabel;
+    serviceSelect.appendChild(og);
+
+    group.items.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.code;
+      opt.dataset.label = item.label;
+      opt.dataset.price = item.price;
+
+      const priceText =
+        item.price && item.price !== "N/C"
+          ? ` ($${item.price})`
+          : " (N/C)";
+
+      opt.textContent = item.label + priceText;
+      og.appendChild(opt);
+    });
+  });
+}
+
+function updateWCByService() {
+  const opt = serviceSelect.options[serviceSelect.selectedIndex];
+  if (!opt) return;
+
+  const price = (opt.dataset.price || "").toUpperCase().trim();
+
+  if (!price || price === "N/C" || price === "NC") {
+    wcInput.value = "N/C";
+  } else {
+    wcInput.value = price;
+  }
+}
+
+
+
+/* Cargar formato original y valores iniciales */
+window.addEventListener("DOMContentLoaded", () => {
+
+  ticketImg.src = DEFAULT_BG_PATH;
+  ticketImg.style.display = "block";
+
+
+  // Construir lista inicial (GENERAL, porque customer=EOG)
+  buildServiceOptions();
+});
+
+/* Acciones al hacer focus */
+customerInput.addEventListener('focus', e => e.target.select());
+rigInput.addEventListener('focus', e => e.target.select());
+techInput.addEventListener('focus', e => e.target.select());
+
+
+
+/* Cambio de servicio = actualizar costo y overlays */
+serviceSelect.addEventListener("change", () => {
+  updateWCByService();
+  syncOverlays();
+});
+
+/* Insertar comentarios rápidos */
+predComment.addEventListener("change", () => {
+  if (predComment.value) {
+    descInput.value = (descInput.value + " " + predComment.value).trim();
+    predComment.value = "";
+    syncOverlays();
+  }
+});
+
+/* SOLO NÚMEROS */
+function forceDigitsMax(el, maxLen){
+  el.value = el.value.replace(/\D/g,'').slice(0, maxLen);
+}
+
+folioInput.addEventListener('input', () => forceDigitsMax(folioInput, 5));
+rtManual.addEventListener('input', () => forceDigitsMax(rtManual, 5));
+
+rtManual.addEventListener("input", () => {
+  rtManual.dataset.autofilled = "false";
+});
+
+/* Subir formato */
+bgInput.addEventListener('change', e => {
+  const f = e.target.files?.[0];
+  if (!f) {
+    ticketImg.src = DEFAULT_BG_PATH;
+    return;
+  }
+  ticketImg.src = URL.createObjectURL(f);
+});
+
+/* Fecha MDY */
+function formatDateMDY(v){
+  if(!v) return "";
+  const p = v.split("-");
+  return `${p[1]}-${p[2]}-${p[0]}`;
+}
+
+/* Resolver siglas */
+function stateToCode(n){
+  if(!n) return "";
+  const map = {
+    "Texas":"TX",
+    "New Mexico":"NM",
+    "Nuevo México":"NM",
+    "Nuevo Leon":"NL",
+    "Nuevo León":"NL"
+  };
+  return map[n] || "";
+}
+
+/* Distancia Haversine */
+function deg2rad(x){ return x*Math.PI/180; }
+
+function haversineMiles(lat1, lon1, lat2, lon2){
+  const dLat = deg2rad(lat2-lat1);
+  const dLon = deg2rad(lon2-lon1);
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(deg2rad(lat1)) *
+    Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return EARTH_RADIUS_MI * c;
+}
+
+/* Parse lat/lon */
+function parseLatLon(str){
+  if(!str) return null;
+  const m = str.trim().match(/(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/);
+  if(!m) return null;
+  return { lat: parseFloat(m[1]), lon: parseFloat(m[3]) };
+}
+
+/* Sincronizar overlays */
+function syncOverlays(){
+  folioOverlay.textContent = folioInput.value || "";
+  stateCodeOverlay.textContent = stateCodeInput.value || "";
+  customerNameOverlay.textContent = customerInput.value || "";
+  rigNameOverlay.textContent = rigInput.value || "";
+  wellNameOverlay.textContent = wellInput.value || "";
+  parishOverlay.textContent = parishInput.value || "";
+
+  dateOverlay.textContent = dateInput.value ? formatDateMDY(dateInput.value) : "";
+  techOverlay.textContent = techInput.value || "";
+
+  // texto limpio del servicio
+   let srvLabel = "";
+  const opt = serviceSelect.options[serviceSelect.selectedIndex];
+
+  // solo mostrar si es un servicio REAL
+  if (opt && opt.value) {
+  srvLabel = opt.dataset.label || "";
+  }
+
+serviceTypeOverlay.textContent = srvLabel;
+
+
+  commentsOverlay.textContent = descInput.value || "";
+
+  // Lógica W/C vs N/C
+    const hasService =
+  serviceSelect.value && serviceSelect.value !== "";
+
+if (!hasService) {
+  wcOverlay.textContent = "";
+} else {
+  const wcRaw = (wcInput.value || "").trim().toUpperCase();
+  if (!wcRaw || wcRaw === "N/C" || wcRaw === "NC") {
+    wcOverlay.textContent = "N/C";
+  } else {
+    wcOverlay.textContent = `W/C - $${wcInput.value}`;
+  }
+}
+
+
+  aOverlay.textContent  = aInput.value  ? `A- ${aInput.value}` : "";
+  dOverlay.textContent  = dInput.value  ? `D- ${dInput.value}` : "";
+  rtOverlay.textContent = rtManual.value ? `R/T- ${rtManual.value} MILES` : "";
+}
+
+/* Calcular R/T */
+function computeAndMaybeSetRT(changedByWorkAddr=false){
+  const work = parseLatLon(workAddr.value);
+  if(!work) return;
+
+  const hq = parseLatLon(hqAddr.value);
+  if(!hq) return;
+
+  const milesOneWay = haversineMiles(hq.lat, hq.lon, work.lat, work.lon);
+  const ROAD_FACTOR = 1.4;
+  const milesRT = Math.round(milesOneWay * ROAD_FACTOR * 2);
+
+  if (changedByWorkAddr) {
+    rtManual.dataset.autofilled = "true";
+  }
+
+  if (rtManual.dataset.autofilled !== "false") {
+    rtManual.value = String(milesRT);
+    syncOverlays();
+  }
+}
+
+/* Eventos blur para actualizar */
+[
+  folioInput, stateCodeInput, customerInput, rigInput, wellInput, parishInput,
+  dateInput, techInput, predComment, descInput,
+  wcInput, aInput, dInput, rtManual, workAddr, hqAddr
+].forEach(el => el.addEventListener("blur", () => {
+
+  if (el === workAddr) computeAndMaybeSetRT(true);
+  if (el === hqAddr) computeAndMaybeSetRT(true);
+
+  syncOverlays();
+}));
+
+/* Obtener ubicación */
+locBtn.addEventListener("click", () => {
+  if (!navigator.geolocation){
+    alert("GPS no soportado.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    try{
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      const addr = data.address || {};
+      const state = addr.state || "";
+      const county = addr.county || addr.municipality || addr.region || "";
+
+      workAddr.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      parishInput.value = county;
+      stateCodeInput.value = stateToCode(state) || state;
+
+      computeAndMaybeSetRT();
+      syncOverlays();
+
+    } catch(e){
+      console.error(e);
+      alert("No se pudo obtener dirección desde GPS.");
+    }
+
+  }, err => alert("No se pudo obtener GPS: " + err.message), {
+    enableHighAccuracy:true,
+    timeout:10000
+  });
+});
+
+/* Botón: generar texto estilo Trello/Calendar */
+fillBtn.addEventListener("click", () => {
+
+  const opt = serviceSelect.options[serviceSelect.selectedIndex];
+  const service = opt ? (opt.dataset.label || opt.textContent) : "";
+
+  const desc    = descInput.value || "";
+  const jobDesc = `${service} ${desc}`.trim();
+
+  const state = stateCodeInput.value || "";
+  const folio = folioInput.value || "";
+  const dateMDY = dateInput.value ? formatDateMDY(dateInput.value) : "";
+
+  // misma lógica que overlay: N/C puro o W/C-$
+  const wcRaw = (wcInput.value || "").trim().toUpperCase();
+  const cost = (!wcRaw || wcRaw === "N/C" || wcRaw === "NC")
+    ? "N/C"
+    : `W/C - $${wcInput.value}`;
+
+  const aTime = aInput.value ? `A- ${aInput.value}` : "";
+  const dTime = dInput.value ? `D- ${dInput.value}` : "";
+  const rt    = rtManual.value ? `R/T- ${rtManual.value} MILES` : "";
+  const tech  = techInput.value || "";
+
+  const block =
+`${jobDesc}
+${state}-${folio}
+${dateMDY}
+${cost}
+${aTime}
+${dTime}
+${rt}
+${tech}`.trim();
+
+  document.getElementById("trelloText").value = block;
+  document.getElementById("trelloModal").style.display = "block";
+});
+
+/* Copiar texto */
+document.getElementById("copyTrello").addEventListener("click", () => {
+  const txt = document.getElementById("trelloText");
+  txt.select();
+  document.execCommand("copy");
+});
+
+/* Cerrar modal */
+document.getElementById("closeModal").addEventListener("click", () => {
+  document.getElementById("trelloModal").style.display = "none";
+});
+
+/* PDF */
+generatePDF.addEventListener("click", async () => {
+
+  syncOverlays();
+
+  const state  = stateCodeInput.value.trim().toUpperCase();
+  const folio  = folioInput.value.trim();
+  const cust   = customerInput.value.trim().replace(/\s+/g," ");
+  const well   = wellInput.value.trim().replace(/\s+/g," ");
+  const srvOpt = serviceSelect.options[serviceSelect.selectedIndex];
+  const srv = srvOpt ? (srvOpt.dataset.label || "").replace(/\s+/g," ") : "";
+  let desc     = descInput.value.trim().split(/\s+/).slice(0,3).join(" ");
+
+  let wcStatus = "NC";
+  if (wcInput.value.trim() !== "" && wcInput.value.trim().toUpperCase() !== "N/C") {
+      wcStatus = "WC";
+  }
+
+  const fileName = `${state}-${folio} ${cust} ${well} ${srv} ${desc} ${wcStatus}`.toUpperCase();
+
+  //  Abrimos ventana ANTES de generar el PDF (solo iOS)
+  const pdfWindow = window.open("", "_blank");
+
+  // Si Safari bloqueó la ventana, avisamos
+  if (!pdfWindow) {
+    alert("Safari bloqueó la ventana emergente. Activa pop-ups.");
+    return;
+  }
+
+  const area = document.getElementById("ticketCanvas");
+  const canvas = await html2canvas(area, { scale:2, useCORS:true });
+  const img = canvas.toDataURL("image/png");
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({
+    unit:"px",
+    format:[canvas.width, canvas.height]
+  });
+
+  pdf.addImage(img,"PNG",0,0,canvas.width,canvas.height);
+
+  //  Crear blob manualmente
+  const blob = pdf.output("blob");
+  const url = URL.createObjectURL(blob);
+
+// Mostrar el PDF en ventana nueva
+pdfWindow.location.href = url;
+pdfWindow.document.title = `${fileName}.pdf`;
+
+
+});   // ← AQUÍ SE CIERRA EL BLOQUE DEL PDF (faltaba)
+
+
+
+
+/* JSON Export */
+downloadJSON.addEventListener("click", () => {
+
+  const data = {
+    folio:folioInput.value,
+    stateCode:stateCodeInput.value,
+    customer:customerInput.value,
+    rig:rigInput.value,
+    well:wellInput.value,
+    parish:parishInput.value,
+    date:dateInput.value,
+    tech:techInput.value,
+    predComment:predComment.value,
+    desc:descInput.value,
+    wc:wcInput.value,
+    a:aInput.value,
+    d:dInput.value,
+    rt:rtManual.value,
+    workAddr:workAddr.value,
+    hqAddr:hqAddr.value
+  };
+
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ticket.json";
+  a.click();
+
+  URL.revokeObjectURL(url);
+});
+
+/* COPY TITLE */
+document.getElementById("copyTitle").addEventListener("click", () => {
+
+  const state  = stateCodeInput.value.trim().toUpperCase();
+  const folio  = folioInput.value.trim();
+  const cust   = customerInput.value.trim().replace(/\s+/g," ");
+  const well   = wellInput.value.trim().replace(/\s+/g," ");
+
+  const srvOpt = serviceSelect.options[serviceSelect.selectedIndex];
+  const srv    = srvOpt ? (srvOpt.dataset.label || srvOpt.textContent) : "";
+
+  let desc     = descInput.value.trim().split(/\s+/).slice(0,3).join(" ");
+
+  let wcStatus = "NC";
+  if (wcInput.value.trim() !== "" && wcInput.value.trim().toUpperCase() !== "N/C") {
+      wcStatus = "WC";
+  }
+
+  const title = `${state}-${folio} ${cust} ${well} ${srv} ${desc} ${wcStatus}`.toUpperCase();
+
+  // Intento de copiar
+  navigator.clipboard.writeText(title)
+    .then(() => alert("TITLE COPIED:\n" + title))
+    .catch(() => {
+      // fallback para iPhone viejo o Safari
+      const temp = document.createElement("textarea");
+      temp.value = title;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      document.body.removeChild(temp);
+      alert("TITLE COPIED:\n" + title);
+    });
+
+});
+
+
+
+
+</script>
+</body>
+</html>
