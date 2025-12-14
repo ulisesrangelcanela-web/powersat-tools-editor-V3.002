@@ -814,20 +814,37 @@ generatePDF.addEventListener("click", async () => {
 
   const area = document.getElementById("ticketCanvas");
 
+  /* ===== FIX iOS: CORTAR OVERFLOW REAL ===== */
+  area.style.overflow = "hidden";
+  area.style.height = "1050px";
+  area.style.maxHeight = "1050px";
+  area.style.minHeight = "1050px";
+
+  /* ===== FORZAR SCROLL TOP (Safari bug) ===== */
+  area.scrollTop = 0;
+  area.scrollLeft = 0;
+
+  /* ===== SCALE ADAPTATIVO ===== */
+  const scale = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 1.5 : 2;
+
   const canvas = await html2canvas(area, {
-    scale: 2,
-    useCORS: true
+    scale,
+    useCORS: true,
+    backgroundColor: "#ffffff",
+    windowWidth: 820,
+    windowHeight: 1050
   });
 
   const img = canvas.toDataURL("image/png");
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({
-    unit: "px",
-    format: [canvas.width, canvas.height]
+    orientation: "portrait",
+    unit: "pt",
+    format: [820, 1050]
   });
 
-  pdf.addImage(img, "PNG", 0, 0, canvas.width, canvas.height);
+  pdf.addImage(img, "PNG", 0, 0, 820, 1050);
 
   const blob = pdf.output("blob");
   const url = URL.createObjectURL(blob);
@@ -841,10 +858,8 @@ generatePDF.addEventListener("click", async () => {
 
   URL.revokeObjectURL(url);
 });
+
    // ← AQUÍ SE CIERRA EL BLOQUE DEL PDF (faltaba)
-
-
-
 
 /* JSON Export */
 downloadJSON.addEventListener("click", () => {
@@ -912,14 +927,7 @@ document.getElementById("copyTitle").addEventListener("click", () => {
       document.body.removeChild(temp);
       alert("TITLE COPIED:\n" + title);
     });
-
 });
-
-
-
-
 </script>
 </body>
 </html>
-
-
