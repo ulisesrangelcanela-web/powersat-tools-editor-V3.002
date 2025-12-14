@@ -64,21 +64,21 @@
   .preview-wrap{flex:1; max-width:824px;}
 
   .ticket-canvas{
-    width:820px;
-    height:1050px;
-    background:#fff;
-    border:1px solid #ccc;
-    position:relative;
-    overflow:hidden;
-  }
+  width:820px;
+  height:auto;        /* ← CLAVE */
+  background:#fff;
+  border:1px solid #ccc;
+  position:relative;
+  overflow:hidden;
+}
 
   .ticket-bg{
-    position:absolute;
-    top:0; left:0;
-    width:100%; height:100%;
-    object-fit:contain;
-    pointer-events:none;
-  }
+  width:100%;
+  height:auto;
+  display:block;
+  pointer-events:none;
+}
+
 
   .overlay{
     position:absolute;
@@ -148,7 +148,7 @@
   }
   .ticket-canvas {
   width: 820px;
-  height: 1050px;
+  height: auto; 
   background: #fff;
   border: 1px solid #ccc;
   position: relative;
@@ -818,17 +818,11 @@ generatePDF.addEventListener("click", async () => {
   const area = document.getElementById("ticketCanvas");
 
   /* ===== FIX iOS: CORTAR OVERFLOW REAL ===== */
-  area.style.overflow = "hidden";
-  area.style.height = "1050px";
-  area.style.maxHeight = "1050px";
-  area.style.minHeight = "1050px";
+area.style.overflow = "hidden";
 
   /* ===== FORZAR SCROLL TOP (Safari bug) ===== */
   area.scrollTop = 0;
   area.scrollLeft = 0;
-
-  // FIX CRÍTICO PARA SAFARI / iOS
-area.getBoundingClientRect();
 
   /* ===== SCALE ADAPTATIVO ===== */
   const scale = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 1 : 2;
@@ -837,13 +831,16 @@ area.getBoundingClientRect();
   document.getElementById("trelloModal").style.display = "none";
   
   
-  const canvas = await html2canvas(area, {
-    scale,
-    useCORS: true,
-    backgroundColor: "#ffffff",
-    windowWidth: 820,
-    windowHeight: 1050
-  });
+  const rect = area.getBoundingClientRect();
+
+const canvas = await html2canvas(area, {
+  scale,
+  useCORS: true,
+  backgroundColor: "#ffffff",
+  width: rect.width,
+  height: rect.height
+});
+
 
   const img = canvas.toDataURL("image/jpeg", 0.85);
 
@@ -955,9 +952,4 @@ document.getElementById("copyTitle").addEventListener("click", () => {
 </script>
 </body>
 </html>
-
-
-
-
-
 
