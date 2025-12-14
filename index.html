@@ -799,14 +799,18 @@ generatePDF.addEventListener("click", async () => {
 
   const fileName = `${state}-${folio} ${cust} ${well} ${srv} ${desc} ${wcStatus}`.toUpperCase();
 
-  //  Abrimos ventana ANTES de generar el PDF (solo iOS)
-  const pdfWindow = window.open("", "_blank");
+const blob = pdf.output("blob");
+const url = URL.createObjectURL(blob);
 
-  // Si Safari bloqueó la ventana, avisamos
-  if (!pdfWindow) {
-    alert("Safari bloqueó la ventana emergente. Activa pop-ups.");
-    return;
-  }
+const a = document.createElement("a");
+a.href = url;
+a.download = `${fileName}.pdf`;
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+
+URL.revokeObjectURL(url);
+
 
   const area = document.getElementById("ticketCanvas");
   const canvas = await html2canvas(area, { scale:2, useCORS:true });
@@ -909,3 +913,4 @@ document.getElementById("copyTitle").addEventListener("click", () => {
 </script>
 </body>
 </html>
+
