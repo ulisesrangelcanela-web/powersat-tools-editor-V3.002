@@ -1,3 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Powersat JSA Editor (2 pages)</title>
+
+<!-- Render a imagen y PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+
+  #nudgePanel{ display:none; }
+  #nudgePanel.locked{ display:none; }
+
+  
+
+  html, body{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+.overlay{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+
+
+  :root{ --accent:#0b63d8; --muted:#444; --card:#fff; }
+  body{font-family:Arial, Helvetica, sans-serif; background:#f3f5f8; margin:16px; color:#111;}
+  .topbar{display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
+  .small{font-size:12px; color:#444;}
+
+  .container{display:flex; gap:18px; align-items:flex-start;}
+  .panel{background:var(--card); padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06);}
+  .form{width:420px; max-height:none; overflow:visible;}
+
+  label{display:block; margin-top:8px; font-size:12px; font-weight:600; letter-spacing:0.4px; color:#555;}
+  input[type="text"], input[type="date"], select, textarea{
+    width:100%; padding:9px 10px; margin-top:4px;
+    border:1px solid #ddd; border-radius:6px; box-sizing:border-box;
+    text-transform:uppercase; font-size:14px; font-weight:500;
+  }
+  textarea{resize:vertical;}
+  .btn{
+    display:inline-block; padding:8px 10px; margin-top:8px;
+    border-radius:6px; cursor:pointer; background:var(--accent);
+    color:#fff; border:none;
+  }
+  .btn.secondary{ background:#777; }
+  .btn.good{ background:#0a8; }
+  .btn.warn{ background:#b00020; }
+  .row{display:flex; gap:10px;}
+  .row > div{flex:1;}
+
+  .preview-wrap{flex:1; max-width:980px;}
+  .tabs{display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;}
+  .tab{padding:8px 10px; border-radius:8px; border:1px solid #ddd; cursor:pointer; background:#fff;}
+  .tab.active{border-color:var(--accent); box-shadow:0 2px 10px rgba(0,0,0,0.06);}
+  .hint{font-size:12px; color:#333; margin:6px 0 0 0;}
+
+  /* ====== CANVAS ====== */
+  .jsa-canvas{
+    width:940px;
+    background:#fff;
+    border:1px solid #ccc;
+    position:relative;
+    overflow:hidden;
+  }
+  .jsa-bg{
+  width:100%;
+  height:auto;
+  display:block;
+  pointer-events:none;
+  position:relative;
+  z-index:0;
+}
+
+.overlay{
+  position:absolute;
+  z-index:10;
+  pointer-events:none;   /* <-- ya no se seleccionan */
+  color:#000;
+  font-size:8px;
+  white-space:pre-wrap;
+  text-transform:uppercase;
+}
+
+
+
+ 
+  /* PAGE 2 table text: keep columns aligned (NO WRAP) */
+  #ov_stepsBlock{
+  white-space: pre;
+  font-family: "Courier New", Courier, monospace;
+  
+
+  letter-spacing: -0.2px;     /* <-- junta letras */
+  transform: scaleX(0.70);    /* <-- comprime ancho (opcional) */
+  transform-origin: left top;
+}
+
+  #ov_taskP2{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+
+  /* Responsive */
+  @media(max-width:1100px){
+    .jsa-canvas{ transform:scale(0.85); transform-origin:top left; }
+  }
+  @media (max-width: 768px) {
+    body{margin:8px; overflow-x:hidden;}
+    .container{flex-direction:column; gap:20px;}
+    .form{width:100% !important; max-height:unset !important;}
+    .preview-wrap{width:100% !important; max-width:100% !important; overflow-x:auto;}
+    .jsa-canvas{width:940px;}
+  }
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <h3 style="margin:0; text-transform:uppercase;">POWERSAT JSA EDITOR (2 PAGES)</h3>
+  <div class="small">Fill fields → preview overlays → generate 2-page PDF.</div>
+</div>
+
 <div class="container">
 
   <!-- ================= LEFT FORM ================= -->
@@ -172,3 +304,779 @@ JOHN D.
   </div><!-- /panel preview-wrap -->
 
 </div><!-- /container -->
+
+
+     <script>
+// ===== DEBUG GLOBAL: si algo truena, te avisa =====
+window.addEventListener("error", (e) => {
+  alert("JS ERROR: " + (e?.message || "unknown"));
+});
+window.addEventListener("unhandledrejection", (e) => {
+  alert("PROMISE ERROR: " + (e?.reason?.message || e?.reason || "unknown"));
+});
+
+
+/* =========================
+   1) SERVICE LIST (REFERENCE)
+   ========================= */
+const SERVICES = [
+  { groupLabel: "--OFFICE TRAILER--", items: [
+    { code:"OFC_RIG_UP",   label:"RIG UP - OFFICE TRAILER" },
+    { code:"OFC_RIG_DOWN", label:"RIG DOWN - OFFICE TRAILER" },
+  ]},
+  { groupLabel: "--GENERATOR--", items: [
+    { code:"GEN_RIG_UP",   label:"RIG UP - GENERATOR" },
+    { code:"GEN_RIG_DOWN", label:"RIG DOWN - GENERATOR" },
+  ]},
+  { groupLabel: "--TOWER--", items: [
+    { code:"TWR_RIG_UP",   label:"RIG UP - TOWER" },
+    { code:"TWR_RIG_DOWN", label:"RIG DOWN - TOWER" },
+  ]},
+  { groupLabel: "--RIGS--", items: [
+    { code:"RIG_RIG_UP",   label:"RIG UP - RIGS" },
+    { code:"RIG_RIG_DOWN", label:"RIG DOWN - RIGS" },
+  ]},
+  { groupLabel: "--GENERAL--", items: [
+    { code:"SITE_CHECK_NET",     label:"SITE CHECK - NET, HIBOOST, STARLINK" },
+    { code:"SITE_CHECK_DIRECTV", label:"SITE CHECK - DIRECTV" },
+  ]},
+];
+
+
+const SERVICE_TEMPLATES = {
+  "OFC_RIG_UP": {
+    ppePreset: "TRAILER",
+    task: "RIG UP - OFFICE TRAILER (SET WATER & POWER, INSTALL/VERIFY STARLINK & DIRECTV, SITE READY)",
+    injury: "FALL / ELECTRICAL SHOCK / STRUCK-BY / HAND INJURY",
+    steps: [
+      ["1","POSITION TRAILER; UNHITCH SAFE","VEH COLLISION / STRUCK-BY / ROLL-AWAY","SPOTTER PRN; CHOCKS; CONES; LEVEL; CLEAR PATHS","TECH","N"],
+      ["2","DEPLOY STABILIZER JACKS; LEVEL","PINCH / CRUSH / MUSCLE STRAIN","GLOVES; HANDS CLEAR; USE HANDLE/TOOL; SLOW, CONTROLLED","TECH","N"],
+      ["3","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["4","RAISE/SET MAST; CHECK HARDWARE","FALL / STRUCK-BY (MOVING PARTS)","KEEP BODY INBOARD; NO OVERREACH; VERIFY LOCKS/PINS","TECH","N"],
+      ["5","MOUNT/POINT STARLINK; ROUTE CBL","FALL / TOOL DROP / PINCH","TOOL CONTROL; SECURE CABLE; NO OVERREACH; 3-PT","TECH","N"],
+      ["6","MOUNT/PEAK DIRECTV; SECURE CBL","FALL / TOOL DROP / PINCH","TOOL CONTROL; SECURE COAX; NO OVERREACH; 3-PT","TECH","N"],
+      ["7","CONNECT WATER HOSES; CHECK LEAK","SLIP / WHIP / SPLASH","DEPRESSURIZE; DRAIN CONTROL; EYE/GLOVES; KEEP AREA DRY","TECH","N"],
+      ["8","TEMP GROUND (TRLR/GEN); VERIFY","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; CLEAR RADIUS; SET ROD STRAIGHT","TECH","N"],
+      ["9","SET ENTRY STAIRS/LADDER; SECURE","PINCH / STRAIN / TRIP","CONTROL LOAD; 2-PER PRN; LOCK/STRAP; VERIFY STABILITY","TECH","N"],
+      ["10","CONNECT POWER FEED; VERIFY V","ELECTRICAL SHOCK / ARC","INSPECT CORD/ENDS; DRY HANDS; GFCI/BRKR OK; GLOVES","TECH","N"],
+      ["11","HOUSEKEEP; CABLE MGMT; WALKDOWN","TRIP / STRUCK-AGAINST","ROUTE CABLES; TAPE/PROTECT; CLEAR PATHS; FINAL WALKDOWN","TECH","N"],
+    ]
+  },
+
+  "OFC_RIG_DOWN": {
+    ppePreset: "TRAILER",
+    task: "RIG DOWN - OFFICE TRAILER (DISCONNECT POWER/WATER, REMOVE STARLINK/DIRECTV, SECURE FOR TRANSPORT)",
+    injury: "FALL / ELECTRICAL SHOCK / STRUCK-BY / HAND INJURY",
+    steps: [
+      ["1","DISCONNECT POWER FEED; VERIFY OFF","ELECTRICAL SHOCK / ARC","OPEN BREAKER; TEST/VERIFY; DRY HANDS; COIL/STORE CORD","TECH","N"],
+      ["2","REMOVE ENTRY STAIRS/LADDER; STOW","PINCH / STRAIN / TRIP","CONTROL LOAD; 2-PER PRN; KEEP FINGERS CLEAR; STRAP DOWN","TECH","N"],
+      ["3","DISCONNECT WATER; DRAIN/ CAP HOSE","SLIP / SPLASH / WHIP","DEPRESSURIZE; DRAIN CONTROL; CAP ENDS; KEEP AREA DRY","TECH","N"],
+      ["4","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["5","REMOVE DIRECTV; COIL/SECURE COAX","FALL / TOOL DROP / PINCH","TOOL CONTROL; NO OVERREACH; SECURE HARDWARE; 3-PT","TECH","N"],
+      ["6","REMOVE STARLINK; COIL/SECURE CBL","FALL / TOOL DROP / PINCH","TOOL CONTROL; NO OVERREACH; SECURE HARDWARE; 3-PT","TECH","N"],
+      ["7","LOWER/SECURE MAST; INSTALL LOCKS","FALL / STRUCK-BY (MOVING PARTS)","CONTROL DESCENT; KEEP CLEAR ZONE; VERIFY PINS/LOCKS","TECH","N"],
+      ["8","RETRACT STABILIZER JACKS; STOW","PINCH / CRUSH","GLOVES; HANDS CLEAR; USE HANDLE/TOOL; VERIFY FULL RETRACT","TECH","N"],
+      ["9","REMOVE TEMP GROUND; BACKFILL HOLE","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; PULL STRAIGHT; STORE ROD/CLAMP","TECH","N"],
+      ["10","HITCH TRAILER; CHECK LIGHTS/CHAINS","VEH COLLISION / STRUCK-BY","SPOTTER PRN; CHOCKS; PIN/LOCK; CHAINS; LIGHT CHECK","TECH","N"],
+    ]
+  },
+
+  "GEN_RIG_UP": {
+    ppePreset: "GEN",
+    task: "RIG UP - GENERATOR (POSITION, STABILIZE, GROUND, CONNECT POWER/WATER)",
+    injury: "ELECTRICAL SHOCK / FIRE / STRUCK-BY / HAND INJURY",
+    steps: [
+      ["1","POSITION GEN; UNHITCH; SET CHOCKS","VEH COLLISION / STRUCK-BY / ROLL-AWAY","SPOTTER PRN; CONES; CHOCKS; LEVEL; CLEAR EXHAUST AREA","TECH","N"],
+      ["2","DEPLOY GEN JACKS; LEVEL UNIT","PINCH / CRUSH / STRAIN","GLOVES; HANDS CLEAR; USE HANDLE/TOOL; SLOW, CONTROLLED","TECH","N"],
+      ["3","CONNECT WATER HOSES; VERIFY FLOW","SLIP / WHIP / SPLASH","DEPRESSURIZE; DRAIN CONTROL; EYE/GLOVES; SECURE FITTINGS","TECH","N"],
+      ["4","TEMP GROUND GEN; VERIFY CLAMP","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; CLEAR RADIUS; TIGHTEN CLAMP","TECH","N"],
+      ["5","CONNECT POWER FEED; CHECK LOAD","ELECTRICAL SHOCK / FIRE","INSPECT CORD/PLUG; DRY HANDS; BREAKER OFF-ON; MONITOR LOAD","TECH","N"],
+    ]
+  },
+
+  "GEN_RIG_DOWN": {
+    ppePreset: "GEN",
+    task: "RIG DOWN - GENERATOR (DISCONNECT, REMOVE GROUND/WATER, SECURE, HITCH)",
+    injury: "ELECTRICAL SHOCK / FIRE / STRUCK-BY / HAND INJURY",
+    steps: [
+      ["1","DISCONNECT POWER FEED; VERIFY OFF","ELECTRICAL SHOCK / ARC","OPEN BREAKER; TEST/VERIFY; DRY HANDS; COIL/STORE CORD","TECH","N"],
+      ["2","DISCONNECT WATER; DRAIN/SECURE HOSE","SLIP / SPLASH / WHIP","DEPRESSURIZE; DRAIN CONTROL; CAP ENDS; KEEP AREA DRY","TECH","N"],
+      ["3","RETRACT GEN JACKS; STOW HANDLE","PINCH / CRUSH","GLOVES; HANDS CLEAR; USE HANDLE/TOOL; VERIFY FULL RETRACT","TECH","N"],
+      ["4","REMOVE TEMP GROUND; STORE ROD/CLAMP","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; PULL STRAIGHT; STORE SECURE","TECH","N"],
+      ["5","HITCH GEN; CHAINS; LIGHT CHECK","VEH COLLISION / STRUCK-BY","SPOTTER PRN; CHOCKS; PIN/LOCK; CHAINS; LIGHT CHECK","TECH","N"],
+    ]
+  },
+
+  "TWR_RIG_UP": {
+    ppePreset: "TOWER",
+    task: "RIG UP - TOWER (POSITION, STABILIZE, CONNECT POWER, TILT UP/EXTEND, INSTALL/VERIFY CAMERAS)",
+    injury: "FALL / STRUCK-BY / CRUSH / ELECTRICAL SHOCK",
+    steps: [
+      ["1","POSITION TOWER; UNHITCH; SET CHOCKS","VEH COLLISION / STRUCK-BY / ROLL-AWAY","SPOTTER PRN; CONES; CHOCKS; LEVEL; CLEAR SWING/WORK ZONE","TECH","N"],
+      ["2","DEPLOY OUTRIGGERS/JACKS; LEVEL","PINCH / CRUSH / STRAIN","GLOVES; HANDS CLEAR; KEEP FEET CLEAR; VERIFY LEVEL INDICATOR","TECH","N"],
+      ["3","REMOVE LOCKS/CHAINS; STOW HARDWARE","PINCH / HAND INJ","GLOVES; CONTROL HARDWARE; KEEP FACE CLEAR; STORE IN BIN","TECH","N"],
+      ["4","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["5","INSTALL/VERIFY CAMERAS; CHECK VIEW","FALL / TOOL DROP","TOOL CONTROL; NO OVERREACH; SECURE CAMERA/BRACKET; 3-PT","TECH","N"],
+      ["6","TEMP GROUND (TRLR/GEN); VERIFY","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; CLEAR RADIUS; TIGHTEN CLAMP","TECH","N"],
+      ["7","CONNECT POWER TO TOWER; VERIFY V","ELECTRICAL SHOCK / ARC","INSPECT CORD/ENDS; DRY HANDS; BREAKER OFF-ON; GLOVES","TECH","N"],
+      ["8","TILT UP USING CTRL; ESTABLISH ZONE","CRUSH / STRUCK-BY / ELEC","EXCLUSION ZONE; WATCH CABLES; CLEAR MOVING PARTS; SPOTTER PRN","TECH","N"],
+      ["9","EXTEND SECTIONS; WATCH SNAGS","ENTANGLEMENT / ELEC / STRUCK","CHECK ROUTING; HANDS CLEAR; STOP IF SNAG; CONTROL SPEED","TECH","N"],
+    ]
+  },
+
+  "TWR_RIG_DOWN": {
+    ppePreset: "TOWER",
+    task: "RIG DOWN - TOWER (RETRACT, TILT DOWN, DISCONNECT POWER, REMOVE CAMERAS, SECURE/HITCH)",
+    injury: "FALL / STRUCK-BY / CRUSH / ELECTRICAL SHOCK",
+    steps: [
+      ["1","RETRACT SECTIONS; WATCH SNAGS","ENTANGLEMENT / ELEC / STRUCK","CHECK ROUTING; HANDS CLEAR; STOP IF SNAG; CONTROL SPEED","TECH","N"],
+      ["2","TILT DOWN USING CTRL; ESTABLISH ZONE","CRUSH / STRUCK-BY / ELEC","EXCLUSION ZONE; WATCH CABLES; CLEAR MOVING PARTS; SPOTTER PRN","TECH","N"],
+      ["3","DISCONNECT POWER; VERIFY OFF","ELECTRICAL SHOCK / ARC","OPEN BREAKER; TEST/VERIFY; DRY HANDS; COIL/STORE CORD","TECH","N"],
+      ["4","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["5","REMOVE CAMERAS; STORE; CHECK DAMAGE","FALL / TOOL DROP","TOOL CONTROL; NO OVERREACH; SECURE HARDWARE; 3-PT","TECH","N"],
+      ["6","RETRACT OUTRIGGERS/JACKS; STOW","PINCH / CRUSH","GLOVES; HANDS CLEAR; USE HANDLE/TOOL; VERIFY FULL RETRACT","TECH","N"],
+      ["7","REMOVE TEMP GROUND; STORE ROD/CLAMP","HAND INJ (HAMMER) / STRUCK","EYE/GLOVES; SAFE SWING; PULL STRAIGHT; STORE SECURE","TECH","N"],
+      ["8","HITCH TOWER; CHAINS; LIGHT CHECK","VEH COLLISION / STRUCK-BY","SPOTTER PRN; CHOCKS; PIN/LOCK; CHAINS; LIGHT CHECK","TECH","N"],
+    ]
+  },
+
+  "RIG_RIG_UP": {
+    ppePreset: "RIGS",
+    task: "RIG UP - RIGS (SET MASTS/CABLES, SECURE EQUIPMENT, VERIFY INSTALLATION)",
+    injury: "FALL / CUTS / HAND INJURY / STRUCK-BY",
+    steps: [
+      ["1","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["2","CUT TIES/STRAPS; REMOVE PACKAGING","CUT / LACERATION","CUT AWAY FROM BODY; CUT GLOVES; CONTROL BLADE; DISPOSE SAFE","TECH","N"],
+      ["3","RAISE/SET MAST; CHECK HARDWARE","FALL / STRUCK-BY (MOVING PARTS)","KEEP BODY INBOARD; NO OVERREACH; VERIFY LOCKS/PINS","TECH","N"],
+      ["4","SECURE MAST (DRILL/DRIVER); VERIFY","FALL / HAND INJ","3-PT; TOOL LANYARD; CORRECT BIT; DO NOT OVER-TORQUE","TECH","N"],
+    ]
+  },
+
+  "RIG_RIG_DOWN": {
+    ppePreset: "RIGS",
+    task: "RIG DOWN - RIGS (LOWER MASTS, SECURE CABLES, INSTALL TIES/STRAPS, PACK UP)",
+    injury: "FALL / CUTS / HAND INJURY / STRUCK-BY",
+    steps: [
+      ["1","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["2","LOWER/SECURE MAST; CONTROL DESCENT","FALL / STRUCK-BY","CONTROL DESCENT; CLEAR DROP ZONE; VERIFY LOCKS/PINS","TECH","N"],
+      ["3","SECURE MAST (DRILL/DRIVER); VERIFY","FALL / HAND INJ","3-PT; TOOL LANYARD; CORRECT BIT; DO NOT OVER-TORQUE","TECH","N"],
+      ["4","SECURE CABLES; INSTALL TIES/STRAPS","CUT / LACERATION / TRIP","CUT GLOVES; ROUTE CLEAN; TAPE/PROTECT; KEEP WALKWAYS CLEAR","TECH","N"],
+    ]
+  },
+
+  "SITE_CHECK_NET": {
+    ppePreset: "RIGS",
+    task: "SITE CHECK - NET / HIBOOST / STARLINK (VISUAL INSPECTION, CONNECTIONS, AND POWER CHECK)",
+    injury: "FALL / ELECTRICAL SHOCK / HAND INJURY",
+    steps: [
+      ["1","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["2","VISUAL INSPECTION OF EQUIP/MAST","FALL / SLIP / STRUCK","VERIFY GROUND; NO OVERREACH; CHECK MOUNTING/CLAMPS/CABLE ROUTE","TECH","N"],
+      ["3","CHECK POWER/CONNECTIONS; NO DAMAGE","ELECTRICAL SHOCK","GLOVES; DRY HANDS; INSPECT CORDS/CONNECTORS; VERIFY TIGHT","TECH","N"],
+      ["4","USE HAND TOOLS FOR TIGHTEN/REPAIR","PINCH / CUT / IMPACT","GLOVES; INSPECT TOOLS; CORRECT TOOL; CONTROL HAND POSITION","TECH","N"],
+      ["5","USE TESTERS/PC; VERIFY SIGNAL/ALARM","ELECTRICAL SHOCK","CHECK LEADS/PROBES; SAFE TEST POINTS; KEEP CABLES CONTROLLED","TECH","N"],
+    ]
+  },
+
+  "SITE_CHECK_DIRECTV": {
+    ppePreset: "RIGS",
+    task: "SITE CHECK - DIRECTV (VISUAL INSPECTION, CONNECTIONS, AND POWER CHECK)",
+    injury: "FALL / ELECTRICAL SHOCK / HAND INJURY",
+    steps: [
+      ["1","SET LADDER (≤8 STEPS); VERIFY","FALL / SLIP / PINCH","INSPECT FEET/RUNGS; FIRM BASE; 4:1 ANGLE; 3-PT","TECH","N"],
+      ["2","VISUAL INSPECTION OF DISH/MAST","FALL / SLIP / STRUCK","VERIFY GROUND; NO OVERREACH; CHECK MOUNTING/BOLTS/COAX ROUTE","TECH","N"],
+      ["3","CHECK POWER/CONNECTIONS; NO DAMAGE","ELECTRICAL SHOCK","GLOVES; DRY HANDS; INSPECT CORDS/CONNECTORS; VERIFY TIGHT","TECH","N"],
+      ["4","USE HAND TOOLS FOR TIGHTEN/REPAIR","PINCH / CUT / IMPACT","GLOVES; INSPECT TOOLS; CORRECT TOOL; CONTROL HAND POSITION","TECH","N"],
+      ["5","USE METER/RECEIVER; VERIFY LEVELS","ELECTRICAL SHOCK","CHECK LEADS/PROBES; SAFE TEST POINTS; KEEP CABLES CONTROLLED","TECH","N"],
+    ]
+  },
+};
+
+
+
+/* =========================
+   2) DOM BINDS
+   ========================= */
+const serviceSelect = document.getElementById("serviceSelect");
+
+
+const companyInput = document.getElementById("companyInput");
+const siteInput = document.getElementById("siteInput");
+const dateInput = document.getElementById("dateInput");
+const taskInput = document.getElementById("taskInput");
+const injuryInput = document.getElementById("injuryInput");
+
+const refReviewed = document.getElementById("refReviewed");
+const refAttach = document.getElementById("refAttach");
+const riskModify = document.getElementById("riskModify");
+const riskRemains = document.getElementById("riskRemains");
+
+const ppePreset = document.getElementById("ppePreset");
+const ppeOther = document.getElementById("ppeOther");
+
+const reviewerName = document.getElementById("reviewerName");
+const reviewerCompany = document.getElementById("reviewerCompany");
+const leaderName = document.getElementById("leaderName");
+const leaderCompany = document.getElementById("leaderCompany");
+const teamNames = document.getElementById("teamNames");
+const completeSelect = document.getElementById("completeSelect");
+
+const genPdfBtn = document.getElementById("genPdfBtn");
+
+const bg1 = document.getElementById("bg1");
+const bg2 = document.getElementById("bg2");
+
+const canvasP1 = document.getElementById("canvasP1");
+const canvasP2 = document.getElementById("canvasP2");
+
+const tabP1 = document.getElementById("tabP1");
+const tabP2 = document.getElementById("tabP2");
+const whichHint = document.getElementById("whichHint");
+
+/* overlays */
+const O = {
+  company: document.getElementById("ov_company"),
+  site: document.getElementById("ov_site"),
+  date: document.getElementById("ov_date"),
+  task: document.getElementById("ov_task"),
+  injury: document.getElementById("ov_injury"),
+  refYes: document.getElementById("ov_refYes"),
+  refNA: document.getElementById("ov_refNA"),
+  refAttach: document.getElementById("ov_refAttach"),
+  riskModifyYes: document.getElementById("ov_riskModify_yes"),
+  riskModifyNo:  document.getElementById("ov_riskModify_no"),
+  riskRemainsYes: document.getElementById("ov_riskRemains_yes"),
+  riskRemainsNo:  document.getElementById("ov_riskRemains_no"),
+  taskP2: document.getElementById("ov_taskP2"),
+
+  
+  ppeOther: document.getElementById("ov_ppeOther"),
+  reviewerName: document.getElementById("ov_reviewerName"),
+  reviewerCompany: document.getElementById("ov_reviewerCompany"),
+  leaderName: document.getElementById("ov_leaderName"),
+  leaderCompany: document.getElementById("ov_leaderCompany"),
+  teamNames: document.getElementById("ov_teamNames"),
+  stepsBlock: document.getElementById("ov_stepsBlock"),
+
+    ppeHardHat: document.getElementById("ov_ppeHardHat"),
+  ppeGlasses: document.getElementById("ov_ppeGlasses"),
+  ppeShoes: document.getElementById("ov_ppeShoes"),
+  ppeGloves: document.getElementById("ov_ppeGloves"),
+  ppeOtherMark: document.getElementById("ov_ppeOtherMark"),
+  ppeOtherText: document.getElementById("ov_ppeOtherText")
+
+
+};
+
+/* =========================
+   3) POSITIONS (YOUR ALIGNED JSON)
+   ========================= */
+let POS = {
+  ov_company: { left: 151, top: 193, fontSize: 9, width: 180 },
+  ov_site: { left: 391, top: 193, fontSize: 9, width: 240 },
+  ov_date: { left: 672, top: 193, fontSize: 11, width: 130 },
+
+  ov_task: { left: 185, top: 209, fontSize: 9, width: 660 },
+  ov_injury: { left: 373, top: 226, fontSize: 9, width: 480 },
+
+  ov_refYes: { left: 276, top: 274, fontSize: 16, width: 40, lineHeight: 1 },
+  ov_refNA: { left: 338, top: 275, fontSize: 16, width: 40, lineHeight: 1 },
+
+  ov_refAttach: { left: 212, top: 299, fontSize: 9, width: 40 },
+
+  ov_riskModify_yes: { left: 277, top: 343, fontSize: 16, width: 40, lineHeight: 1 },
+  ov_riskModify_no: { left: 339, top: 343, fontSize: 16, width: 40, lineHeight: 1 },
+
+  ov_riskRemains_yes: { left: 278, top: 382, fontSize: 16, width: 40, lineHeight: 1 },
+  ov_riskRemains_no: { left: 339, top: 383, fontSize: 16, width: 40, lineHeight: 1 },
+
+
+  ov_ppeOther: { left: 140, top: 733, fontSize: 9, width: 130 },
+
+  ov_reviewerName: { left: 473, top: 322, fontSize: 9, width: 130 },
+  ov_reviewerCompany: { left: 680, top: 322, fontSize: 9, width: 130 },
+
+  ov_leaderName: { left: 471, top: 485, fontSize: 9, width: 130 },
+  ov_leaderCompany: { left: 677, top: 485, fontSize: 9, width: 130 },
+
+  ov_teamNames: { left: 402, top: 555, fontSize: 9, width: 130, lineHeight: 1.35 },
+
+  ov_stepsBlock: { left: 54, top: 278, fontSize: 8, width: 1150, lineHeight: 2.05 },
+
+  ov_taskP2: { left: 121, top: 187, fontSize: 9, width: 680, lineHeight: 1.1 },
+
+
+
+  // PPE checkboxes
+  ov_ppeHardHat: { left: 104, top: 479, fontSize: 16, width: 30, lineHeight: 1 },
+  ov_ppeGlasses: { left: 217, top: 479, fontSize: 16, width: 30, lineHeight: 1 },
+  ov_ppeShoes: { left: 104, top: 505, fontSize: 16, width: 30, lineHeight: 1 },
+  ov_ppeGloves: { left: 217, top: 540, fontSize: 16, width: 30, lineHeight: 1 },
+  ov_ppeOtherMark: { left: 105, top: 621, fontSize: 16, width: 30, lineHeight: 1 },
+  ov_ppeOtherText: { left: 215, top: 627, fontSize:8, width: 80, lineHeight: 1 }  
+
+
+};
+
+
+
+
+
+
+
+function applyPos() {
+  Object.keys(POS).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const p = POS[id];
+
+    el.style.left = (p.left || 0) + "px";
+    el.style.top  = (p.top  || 0) + "px";
+
+    /* tamaño de letra */
+    el.style.fontSize = (p.fontSize || 8) + "px";
+
+    /* ancho controlado */
+    if (p.width) el.style.width = p.width + "px";
+
+    /* ↓↓↓ ESTO CONTROLA LA PARTE INVISIBLE ↓↓↓ */
+    el.style.lineHeight = (p.lineHeight || 1.05);
+    el.style.maxHeight  = p.maxHeight ? (p.maxHeight + "px") : "none";
+    el.style.overflow   = p.maxHeight ? "hidden" : "visible";
+  });
+}
+function forceAllFontSize(sizePx){
+  Object.keys(POS).forEach(id => {
+    POS[id] = POS[id] || {};
+    POS[id].fontSize = sizePx;
+  });
+  applyPos();
+}
+
+
+
+
+/* =========================
+   4) BUILD SERVICE OPTIONS
+   ========================= */
+function buildServiceOptions() {
+  serviceSelect.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "-- SELECT SERVICE --";
+  ph.disabled = true;
+  ph.selected = true;
+  serviceSelect.appendChild(ph);
+
+  SERVICES.forEach(group => {
+    const og = document.createElement("optgroup");
+    og.label = group.groupLabel;
+    serviceSelect.appendChild(og);
+
+    group.items.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.code;
+      opt.dataset.label = item.label;
+      opt.textContent = item.label;
+      og.appendChild(opt);
+    });
+  });
+}
+
+/* =========================
+   5) HELPERS
+   ========================= */
+function formatDateMDY(v){
+  if(!v) return "";
+  const p = v.split("-");
+  return `${p[1]}-${p[2]}-${p[0]}`;
+}
+
+function teamNamesInline(){
+  // Convierte:
+  // ULISES
+  // MARK
+  // KLUG
+  // en:
+  // ULISES / MARK / KLUG
+  const raw = (teamNames.value || "").trim();
+  if(!raw) return (leaderName.value || "").trim(); // fallback si está vacío
+
+  return raw
+    .split(/\r?\n+/)          // split por líneas
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function completeValue(){
+  const v = (completeSelect?.value || "NO").toUpperCase();
+  if(v === "BLANK") return "";
+  if(v === "YES") return "YES";
+  return "NO";
+}
+
+
+function templateToStepsBlock(lines){
+  const whoLine = teamNamesInline().toUpperCase();
+
+  return lines.map(r => {
+    const n    = (r[0]||" ").padEnd(3," ");
+    const step = (r[1]||" ").slice(0,40).padEnd(42," ");
+    const haz  = (r[2]||" ").slice(0,70).padEnd(72," ");
+    const ctrl = (r[3]||" ").slice(0,70).padEnd(72," ");
+
+    // antes: leaderName
+    // ahora: WORK TEAM NAMES en una sola línea
+    const who  = whoLine.slice(0,45).padEnd(47," ");
+
+    const done = completeValue();       // "", "NO", o "YES"
+    const doneCol = done.padEnd(3," "); // ancho fijo para la columna
+    return `${n}${step}${haz}${ctrl}${who}${doneCol}`;
+
+  }).join("\n");
+}
+
+
+function textToStepsBlock(raw){
+  const lines = (raw || "").split("\n").map(x => x.trim()).filter(Boolean);
+
+  const rows = lines.map(line => {
+    // Espera: "1) STEP | HAZARD | CONTROL | ASSIGNED | N"
+    const m = line.match(/^(\d+)\)\s*(.*)$/);
+    let stepNum = " ";
+    let rest = line;
+
+    if(m){
+      stepNum = m[1];
+      rest = m[2];
+    }
+
+    const parts = rest.split("|").map(x => x.trim());
+    const step = parts[0] || "";
+    const haz  = parts[1] || "";
+    const ctrl = parts[2] || "";
+    const who  = parts[3] || "";
+    const done = parts[4] || "N";
+
+    return [stepNum, step, haz, ctrl, who, done];
+  });
+
+  return templateToStepsBlock(rows);
+}
+
+let STEPS_RAW = ""; // aquí guardamos los steps sin mostrar textarea
+
+
+
+function syncPreview(){
+  O.company.textContent = companyInput.value || "";
+  O.site.textContent = siteInput.value || "";
+  O.date.textContent = dateInput.value ? formatDateMDY(dateInput.value) : "";
+
+  O.task.textContent = taskInput.value || "";
+  O.taskP2.textContent = taskInput.value || ""; // NUEVO
+  O.injury.textContent = injuryInput.value || "";
+
+  const mark = "■"; // cuadro relleno
+O.refYes.textContent = (refReviewed.value === "YES") ? mark : "";
+O.refNA.textContent  = (refReviewed.value === "NA")  ? mark : "";
+
+  O.refAttach.textContent = refAttach.value || "";
+
+
+
+// MODIFY PROCEDURES? (YES/NO)
+O.riskModifyYes.textContent = (riskModify.value === "YES") ? mark : "";
+O.riskModifyNo.textContent  = (riskModify.value === "NO")  ? mark : "";
+
+// SIGNIFICANT RISK REMAINS? (YES/NO)
+O.riskRemainsYes.textContent = (riskRemains.value === "YES") ? mark : "";
+O.riskRemainsNo.textContent  = (riskRemains.value === "NO")  ? mark : "";
+
+
+  
+  O.ppeOther.textContent = ppeOther.value || "";
+
+  O.reviewerName.textContent = reviewerName.value || "";
+  O.reviewerCompany.textContent = reviewerCompany.value || "";
+
+  O.leaderName.textContent = leaderName.value || "";
+  O.leaderCompany.textContent = leaderCompany.value || "";
+
+  O.teamNames.textContent = teamNames.value || "";
+
+  O.stepsBlock.textContent = textToStepsBlock(STEPS_RAW).toUpperCase();
+
+
+}
+
+function enableLivePreview(){
+  // Todos los inputs/select/textarea dentro del panel del formulario
+  const formPanel = document.querySelector(".panel.form");
+  if(!formPanel) return;
+
+  const controls = formPanel.querySelectorAll("input, textarea, select");
+
+  // Para no saturar el browser al teclear rápido (debounce)
+  let t = null;
+  const scheduleSync = () => {
+    clearTimeout(t);
+    t = setTimeout(() => syncPreview(), 30);
+  };
+
+  controls.forEach(el => {
+    el.addEventListener("input", scheduleSync);
+    el.addEventListener("change", scheduleSync);
+    el.addEventListener("blur", scheduleSync);
+  });
+}
+
+
+/* =========================
+   8) TABS
+   ========================= */
+function showPage(n){
+  if(n === 1){
+    tabP1.classList.add("active"); tabP2.classList.remove("active");
+    canvasP1.style.display = "block";
+    canvasP2.style.display = "none";
+    whichHint.textContent = "Previewing Page 1";
+  } else {
+    tabP2.classList.add("active"); tabP1.classList.remove("active");
+    canvasP1.style.display = "none";
+    canvasP2.style.display = "block";
+    whichHint.textContent = "Previewing Page 2";
+  }
+}
+tabP1.addEventListener("click", () => showPage(1));
+tabP2.addEventListener("click", () => showPage(2));
+
+
+/* =========================
+   10) AUTOFILL FROM SERVICE
+   ========================= */
+serviceSelect.addEventListener("change", () => {
+  const code = serviceSelect.value;
+  const t = SERVICE_TEMPLATES[code];
+  if(!t) return;
+
+    // === AUTOFILL DEFAULT NAMES (ON SERVICE TYPE SELECT) ===
+  const DEFAULTS = {
+  reviewerName: "DANNY GARCIA",
+  reviewerCompany: "POWERSAT COMM USA LP",
+  leaderName: "ULISES RANGEL",
+  leaderCompany: "POWERSAT COMM USA LP",
+  teamNames: "ULISES RANGEL"
+};
+
+// Prefill ONLY if empty (recommended)
+if(!reviewerName.value.trim())    reviewerName.value    = DEFAULTS.reviewerName;
+if(!reviewerCompany.value.trim()) reviewerCompany.value = DEFAULTS.reviewerCompany;
+if(!leaderName.value.trim())      leaderName.value      = DEFAULTS.leaderName;
+if(!leaderCompany.value.trim())   leaderCompany.value   = DEFAULTS.leaderCompany;
+if(!teamNames.value.trim())       teamNames.value       = DEFAULTS.teamNames;
+
+
+
+
+    // Auto-fill DATE with today's date (YYYY-MM-DD) if empty
+  if(!dateInput.value){
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    dateInput.value = `${yyyy}-${mm}-${dd}`;
+  }
+
+
+  // 1) Task + Injury + PPE text
+  taskInput.value   = t.task   || taskInput.value;
+  injuryInput.value = t.injury || injuryInput.value;
+  
+
+  // 2) Auto set YES fields you want
+  refReviewed.value = "YES";     // REQUIRED REFERENCES (CHECK) -> YES
+  riskModify.value  = "YES";     // RISK ASSESSMENT -> MODIFY PROCEDURES? YES
+  riskRemains.value = "YES";     // SIGNIFICANT RISK REMAINS? YES
+
+  // 3) PPE preset auto-select based on service template
+  //    This sets the dropdown AND triggers your checkmark logic.
+  if(t.ppePreset){
+    ppePreset.value = t.ppePreset;
+    ppePreset.dispatchEvent(new Event("change", { bubbles:true }));
+  }
+
+  // 4) Steps
+  if(Array.isArray(t.steps)){
+  STEPS_RAW =
+    t.steps.map(r => `${r[0]}) ${r[1]} | ${r[2]} | ${r[3]} | ${r[4]} | ${r[5]}`).join("\n");
+
+  // opcional: puedes dejar esta línea o quitarla, porque syncPreview ya lo pone
+  // O.stepsBlock.textContent = templateToStepsBlock(t.steps).toUpperCase();
+}
+
+
+
+  // 5) Push everything to preview (includes checkboxes)
+  syncPreview();
+});
+
+
+/* PPE presets quick */
+ppePreset.addEventListener("change", () => {
+  const v = ppePreset.value;
+  const mark = "■";
+
+  // limpia todo primero
+  O.ppeHardHat.textContent = "";
+  O.ppeGlasses.textContent = "";
+  O.ppeShoes.textContent   = "";
+  O.ppeGloves.textContent  = "";
+  O.ppeOtherMark.textContent = "";
+  ppeOther.value = "";          // input del lado izquierdo
+  O.ppeOther.textContent = "";  // overlay del texto
+  O.ppeOtherText.textContent = "";
+
+
+  if(!v){
+    syncPreview();
+    return;
+  }
+
+  // En tu caso dijiste: "cualquiera que seleccione arroje varios simbolos"
+  // => todos los presets marcan estos básicos + FR CLOTHES
+  O.ppeHardHat.textContent = mark ;
+  O.ppeGlasses.textContent = mark ;
+  O.ppeShoes.textContent   = mark ;
+  O.ppeGloves.textContent  = mark ;
+
+  // OTHER PPE: check + texto
+  O.ppeOtherMark.textContent = mark ;
+    ppeOther.value = "FR CLOTHES";
+O.ppeOtherText.textContent = "FR CLOTHES";
+
+
+  // Si todavía quieres mantener el texto largo en ppeText, puedes dejarlo,
+  // o vaciarlo para que ya no estorbe:
+  // ppeText.value = "";
+  // O.ppeText.textContent = "";
+
+  syncPreview();
+});
+
+
+/* =========================
+   11) GENERATE 2-PAGE PDF
+   ========================= */
+genPdfBtn.addEventListener("click", async () => {
+  try{
+    if(typeof html2canvas !== "function"){
+      alert("html2canvas NO cargó. Si abriste como file://, prueba servirlo con un server (Live Server).");
+      return;
+    }
+    if(!window.jspdf || !window.jspdf.jsPDF){
+      alert("jsPDF NO cargó (window.jspdf.jsPDF undefined). Revisa que el CDN no esté bloqueado.");
+      return;
+    }
+
+    syncPreview();
+
+   
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
+    const pdfW = 841.89, pdfH = 595.28;
+
+    async function captureToImg(el){
+      el.style.overflow = "hidden";
+      el.scrollTop = 0; el.scrollLeft = 0;
+      void el.offsetHeight;
+
+      const rect = el.getBoundingClientRect();
+      if(rect.width < 10 || rect.height < 10){
+        throw new Error("Canvas size inválido ("+rect.width+"x"+rect.height+"). ¿Está hidden?");
+      }
+
+      const scale = isIOS ? 1 : Math.min(2, (window.devicePixelRatio || 1));
+
+      const canvas = await html2canvas(el, {
+        scale,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false
+      });
+
+      // Recomendado para iPhone: JPEG (menos pesado)
+      return canvas.toDataURL("image/jpeg", 0.85);
+    }
+
+    const prevP1 = canvasP1.style.display;
+    const prevP2 = canvasP2.style.display;
+
+    // PAGE 1
+    canvasP1.style.display = "block";
+    canvasP2.style.display = "none";
+    const img1 = await captureToImg(canvasP1);
+    pdf.addImage(img1, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
+
+    // PAGE 2
+    pdf.addPage();
+    canvasP1.style.display = "none";
+    canvasP2.style.display = "block";
+    const img2 = await captureToImg(canvasP2);
+    pdf.addImage(img2, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
+
+    // restore view
+    canvasP1.style.display = prevP1;
+    canvasP2.style.display = prevP2;
+
+    const fileName = ("JSA_" + (siteInput.value || "SITE") + "_" + (dateInput.value || ""))
+      .replace(/\s+/g,"_")
+      .toUpperCase();
+
+    const blob = pdf.output("blob");
+    const url = URL.createObjectURL(blob);
+
+    if(isIOS){
+      // iPhone: visualizar (NO descargar)
+      window.location.href = url;
+    } else {
+      // Android/Desktop: descargar
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    
+
+  }catch(err){
+    alert("PDF ERROR: " + (err?.message || err));
+    console.error(err);
+  }
+});
+
+/* Init (ONE ONLY) */
+   window.addEventListener("DOMContentLoaded", () => {
+  buildServiceOptions();
+
+     bg1.src = "bg-page-1.jpg";
+     bg2.src = "bg-page-2.jpg";
+
+  applyPos();
+  showPage(1);
+  syncPreview();
+  enableLivePreview();
+});
+
+</script>
+
+</body>
+</html>
