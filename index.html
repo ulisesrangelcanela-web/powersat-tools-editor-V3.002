@@ -169,7 +169,8 @@
      PROJECT 2 CSS (scoped)
      ========================= -->
 <style>
-html, body{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+#jsaApp{ -webkit-text-size-adjust: 100%;text-size-adjust: 100%;}
 
 
 #jsaApp .topbar{display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
@@ -496,10 +497,14 @@ JOHN D.
 
       <hr />
 
-      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-        <button id="jsa_genPdfBtn" class="btn good" type="button">GENERATE 2-PAGE PDF</button>
-      </div>
-    </div>
+       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+       <button id="jsa_genPdfBtn" class="btn good" type="button">GEN JSA (2PG) PDF</button>
+
+       <button id="genAllPdfBtn" class="btn" type="button" style="background:#0057ff;">
+        GEN TICKET + JSA'S PDF
+       </button>
+     </div>
+     </div> <!-- /panel form -->
 
     <!-- RIGHT PREVIEW -->
     <div class="panel preview-wrap">
@@ -761,6 +766,10 @@ JOHN D.
     dOverlay.textContent  = dInput.value ? `D- ${timeToHHMM(dInput.value)}` : "";
     rtOverlay.textContent = rtManual.value ? `R/T- ${rtManual.value} MILES` : "";
   }
+    
+  
+  
+   window.ticketSyncOverlays = syncOverlays;
 
   function computeAndMaybeSetRT(changedByWorkAddr=false){
     const work = parseLatLon(workAddr.value);
@@ -1004,65 +1013,78 @@ ${tech}`.trim();
     document.getElementById("trelloModal").style.display = "none";
   });
 
-  generatePDF.addEventListener("click", async () => {
-    syncOverlays();
+       async function generateTicketPdfBlob(){
+  syncOverlays();
 
-    const state  = stateCodeInput.value.trim().toUpperCase();
-    const folio  = folioInput.value.trim();
-    const cust   = customerInput.value.trim().replace(/\s+/g," ");
-    const well   = wellInput.value.trim().replace(/\s+/g," ");
-    const srvOpt = serviceSelect.options[serviceSelect.selectedIndex];
-    const srv    = srvOpt ? (srvOpt.dataset.label || "").replace(/\s+/g," ") : "";
-    let desc     = descInput.value.trim().split(/\s+/).slice(0,3).join(" ");
+  const state  = stateCodeInput.value.trim().toUpperCase();
+  const folio  = folioInput.value.trim();
+  const cust   = customerInput.value.trim().replace(/\s+/g," ");
+  const well   = wellInput.value.trim().replace(/\s+/g," ");
+  const srvOpt = serviceSelect.options[serviceSelect.selectedIndex];
+  const srv    = srvOpt ? (srvOpt.dataset.label || "").replace(/\s+/g," ") : "";
+  let desc     = descInput.value.trim().split(/\s+/).slice(0,3).join(" ");
 
-    let wcStatus = "NC";
-    if (wcInput.value.trim() !== "" && wcInput.value.trim().toUpperCase() !== "N/C") wcStatus = "WC";
+  let wcStatus = "NC";
+  if (wcInput.value.trim() !== "" && wcInput.value.trim().toUpperCase() !== "N/C") wcStatus = "WC";
 
-    const fileName = `${state}-${folio} ${cust} ${well} ${srv} ${desc} ${wcStatus}`.toUpperCase();
+  const fileName = `${state}-${folio} ${cust} ${well} ${srv} ${desc} ${wcStatus}`.toUpperCase();
 
-    const area = document.getElementById("ticketCanvas");
-    area.style.overflow = "hidden";
-    area.scrollTop = 0;
-    area.scrollLeft = 0;
+  const area = document.getElementById("ticketCanvas");
+  area.style.overflow = "hidden";
+  area.scrollTop = 0;
+  area.scrollLeft = 0;
 
-    const scale = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 1 : 2;
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const scale = isIOS ? 1 : 2;
 
-    document.getElementById("trelloModal").style.display = "none";
+  document.getElementById("trelloModal").style.display = "none";
 
-    const rect = area.getBoundingClientRect();
-    const canvas = await html2canvas(area, {
-      scale,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      width: rect.width,
-      height: rect.height
-    });
-
-    const img = canvas.toDataURL("image/jpeg", 0.85);
-
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-    const pdfWidth = 595.28;
-    const pdfHeight = 841.89;
-
-    pdf.addImage(img, "JPEG", 0, 0, pdfWidth, pdfHeight);
-
-    const blob = pdf.output("blob");
-    const url = URL.createObjectURL(blob);
-
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isIOS) window.location.href = url;
-    else {
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${fileName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const rect = area.getBoundingClientRect();
+  const canvas = await html2canvas(area, {
+    scale,
+    useCORS: true,
+    backgroundColor: "#ffffff",
+    width: rect.width,
+    height: rect.height
   });
+
+  const img = canvas.toDataURL("image/jpeg", 0.85);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  pdf.addImage(img, "JPEG", 0, 0, 595.28, 841.89);
+
+  return { blob: pdf.output("blob"), fileName };
+}
+
+function downloadBlob(blob, fileNameNoExt){
+  const url = URL.createObjectURL(blob);
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  if(isIOS){
+    window.location.href = url;
+  } else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${fileNameNoExt}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// Botón verde Project1: sigue funcionando normal (solo Ticket)
+generatePDF.addEventListener("click", async () => {
+  try{
+    const { blob, fileName } = await generateTicketPdfBlob();
+    downloadBlob(blob, fileName);
+  }catch(err){
+    alert("TICKET PDF ERROR: " + (err?.message || err));
+    console.error(err);
+  }
+});
+
 
   document.getElementById("copyTitle").addEventListener("click", () => {
     const state  = stateCodeInput.value.trim().toUpperCase();
@@ -1147,6 +1169,7 @@ if (jsaTeamNames) {
 
 
 }
+window.pushToJSA = pushToJSA; // <-- AGREGA ESTA LÍNEA
 
 // listeners
 wellInput.addEventListener("input", pushToJSA);
@@ -1400,6 +1423,8 @@ window.addEventListener("DOMContentLoaded", pushToJSA);
   const completeSelect = document.getElementById("jsa_completeSelect");
 
   const genPdfBtn = document.getElementById("jsa_genPdfBtn");
+  const genAllPdfBtn = document.getElementById("genAllPdfBtn");
+
 
   const bg1 = document.getElementById("jsa_bg1");
   const bg2 = document.getElementById("jsa_bg2");
@@ -1473,7 +1498,7 @@ const REF_MAP = {
     jsa_ov_refYes: { left: 276, top: 274, fontSize: 16, width: 40, lineHeight: 1 },
     jsa_ov_refNA: { left: 338, top: 275, fontSize: 16, width: 40, lineHeight: 1 },
 
-    jsa_ov_refAttach: { left: 212, top: 303, fontSize: 7, width: 145 },
+    jsa_ov_refAttach: { left: 212, top: 303, fontSize: 8, width: 145 },
 
     jsa_ov_riskModify_yes: { left: 277, top: 343, fontSize: 16, width: 40, lineHeight: 1 },
     jsa_ov_riskModify_no: { left: 339, top: 343, fontSize: 16, width: 40, lineHeight: 1 },
@@ -1734,72 +1759,187 @@ const REF_MAP = {
 
     syncPreview();
   });
+         async function generateJsaPdf(){
+  if(typeof html2canvas !== "function"){ alert("html2canvas NO cargó."); return; }
+  if(!window.jspdf || !window.jspdf.jsPDF){ alert("jsPDF NO cargó."); return; }
 
-  genPdfBtn.addEventListener("click", async () => {
-    try{
-      if(typeof html2canvas !== "function"){ alert("html2canvas NO cargó."); return; }
-      if(!window.jspdf || !window.jspdf.jsPDF){ alert("jsPDF NO cargó."); return; }
+  syncPreview();
 
-      syncPreview();
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
+  const pdfW = 841.89, pdfH = 595.28;
 
-      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF({ orientation:"landscape", unit:"pt", format:"a4" });
-      const pdfW = 841.89, pdfH = 595.28;
+  async function captureToImg(el){
+    el.style.overflow = "hidden";
+    el.scrollTop = 0; el.scrollLeft = 0;
+    void el.offsetHeight;
 
-      async function captureToImg(el){
-        el.style.overflow = "hidden";
-        el.scrollTop = 0; el.scrollLeft = 0;
-        void el.offsetHeight;
+    const rect = el.getBoundingClientRect();
+    if(rect.width < 10 || rect.height < 10) throw new Error("Canvas size inválido ("+rect.width+"x"+rect.height+").");
 
-        const rect = el.getBoundingClientRect();
-        if(rect.width < 10 || rect.height < 10) throw new Error("Canvas size inválido ("+rect.width+"x"+rect.height+").");
+    const scale = isIOS ? 1 : Math.min(2, (window.devicePixelRatio || 1));
+    const canvas = await html2canvas(el, { scale, useCORS: true, backgroundColor: "#ffffff", logging: false });
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }
 
-        const scale = isIOS ? 1 : Math.min(2, (window.devicePixelRatio || 1));
-        const canvas = await html2canvas(el, { scale, useCORS: true, backgroundColor: "#ffffff", logging: false });
-        return canvas.toDataURL("image/jpeg", 0.85);
-      }
+  const prevP1 = canvasP1.style.display;
+  const prevP2 = canvasP2.style.display;
 
-      const prevP1 = canvasP1.style.display;
-      const prevP2 = canvasP2.style.display;
+  canvasP1.style.display = "block";
+  canvasP2.style.display = "none";
+  const img1 = await captureToImg(canvasP1);
+  pdf.addImage(img1, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
 
-      canvasP1.style.display = "block";
-      canvasP2.style.display = "none";
-      const img1 = await captureToImg(canvasP1);
-      pdf.addImage(img1, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
+  pdf.addPage();
+  canvasP1.style.display = "none";
+  canvasP2.style.display = "block";
+  const img2 = await captureToImg(canvasP2);
+  pdf.addImage(img2, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
 
-      pdf.addPage();
-      canvasP1.style.display = "none";
-      canvasP2.style.display = "block";
-      const img2 = await captureToImg(canvasP2);
-      pdf.addImage(img2, "JPEG", 0, 0, pdfW, pdfH, undefined, "FAST");
+  canvasP1.style.display = prevP1;
+  canvasP2.style.display = prevP2;
 
-      canvasP1.style.display = prevP1;
-      canvasP2.style.display = prevP2;
+  const fileName = ("JSA_" + (siteInput.value || "SITE") + "_" + (dateInput.value || ""))
+    .replace(/\s+/g,"_")
+    .toUpperCase();
 
-      const fileName = ("JSA_" + (siteInput.value || "SITE") + "_" + (dateInput.value || ""))
-        .replace(/\s+/g,"_")
-        .toUpperCase();
+  const blob = pdf.output("blob");
+  const url = URL.createObjectURL(blob);
 
-      const blob = pdf.output("blob");
-      const url = URL.createObjectURL(blob);
+  if(isIOS) window.location.href = url;
+  else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName + ".pdf";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
-      if(isIOS) window.location.href = url;
-      else {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName + ".pdf";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+async function captureJsaPagesAsImages(){
+  syncPreview();
 
-    }catch(err){
-      alert("PDF ERROR: " + (err?.message || err));
-      console.error(err);
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  async function captureToImg(el){
+    el.style.overflow = "hidden";
+    el.scrollTop = 0; el.scrollLeft = 0;
+    void el.offsetHeight;
+
+    const rect = el.getBoundingClientRect();
+    if(rect.width < 10 || rect.height < 10) throw new Error("Canvas size inválido ("+rect.width+"x"+rect.height+").");
+
+    const scale = isIOS ? 1 : Math.min(2, (window.devicePixelRatio || 1));
+    const canvas = await html2canvas(el, { scale, useCORS: true, backgroundColor: "#ffffff", logging: false });
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }
+
+  const prevP1 = canvasP1.style.display;
+  const prevP2 = canvasP2.style.display;
+
+  canvasP1.style.display = "block";
+  canvasP2.style.display = "none";
+  const img1 = await captureToImg(canvasP1);
+
+  canvasP1.style.display = "none";
+  canvasP2.style.display = "block";
+  const img2 = await captureToImg(canvasP2);
+
+  canvasP1.style.display = prevP1;
+  canvasP2.style.display = prevP2;
+
+  return { img1, img2 };
+}
+
+
+// Botón verde: solo JSA
+genPdfBtn.addEventListener("click", async () => {
+  try{
+    await generateJsaPdf();
+  }catch(err){
+    alert("PDF ERROR: " + (err?.message || err));
+    console.error(err);
+  }
+});
+  genAllPdfBtn?.addEventListener("click", async () => {
+  try{
+    if(typeof html2canvas !== "function"){ alert("html2canvas NO cargó."); return; }
+    if(!window.jspdf || !window.jspdf.jsPDF){ alert("jsPDF NO cargó."); return; }
+
+    
+
+    // En vez de pedir PDF del ticket, queremos IMAGEN para insertarla en un solo pdf:
+    // Por simplicidad (y menos cambios), aquí capturamos el ticketCanvas como imagen directo:
+    const ticketCanvasEl = document.getElementById("ticketCanvas");
+    if(!ticketCanvasEl){ alert("No encuentro ticketCanvas."); return; }
+
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const scaleTicket = isIOS ? 1 : 2;
+
+    if(typeof window.ticketSyncOverlays === "function") window.ticketSyncOverlays();
+
+    // Asegura overlays actualizados
+    // (Project1 syncOverlays está dentro de su IIFE; por eso capturamos tal cual se ve.
+    //  Si quieres perfecto, expón syncOverlays también. Pero normalmente ya está actualizado por blur/input.)
+    ticketCanvasEl.style.overflow = "hidden";
+    ticketCanvasEl.scrollTop = 0; ticketCanvasEl.scrollLeft = 0;
+
+    const rectT = ticketCanvasEl.getBoundingClientRect();
+    const ticketShot = await html2canvas(ticketCanvasEl, {
+      scale: scaleTicket,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      width: rectT.width,
+      height: rectT.height
+    });
+    const ticketImg = ticketShot.toDataURL("image/jpeg", 0.85);
+
+    // 2) Captura JSA page1/page2 como imágenes
+    const { img1: jsaImg1, img2: jsaImg2 } = await captureJsaPagesAsImages();
+
+    // 3) Construye UN SOLO PDF 3 páginas (rotando por página)
+    const { jsPDF } = window.jspdf;
+
+    // Página 1: Ticket portrait A4
+    const pdf = new jsPDF({ orientation:"portrait", unit:"pt", format:"a4" });
+    pdf.addImage(ticketImg, "JPEG", 0, 0, 595.28, 841.89, undefined, "FAST");
+
+    // Página 2: JSA P1 landscape A4
+    pdf.addPage("a4", "landscape");
+    pdf.addImage(jsaImg1, "JPEG", 0, 0, 841.89, 595.28, undefined, "FAST");
+
+    // Página 3: JSA P2 landscape A4
+    pdf.addPage("a4", "landscape");
+    pdf.addImage(jsaImg2, "JPEG", 0, 0, 841.89, 595.28, undefined, "FAST");
+
+    // Nombre final (usa Site + Date para que sea consistente)
+    const fileName = ("TICKET_JSA_" + (siteInput.value || "SITE") + "_" + (dateInput.value || ""))
+      .replace(/\s+/g,"_")
+      .toUpperCase();
+
+    // Descargar / abrir
+    const blob = pdf.output("blob");
+    const url = URL.createObjectURL(blob);
+
+    if(isIOS) window.location.href = url;
+    else{
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
-  });
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  }catch(err){
+    alert("COMBO PDF ERROR: " + (err?.message || err));
+    console.error(err);
+  }
+});
 
   window.addEventListener("DOMContentLoaded", () => {
     buildServiceOptions();
@@ -1809,6 +1949,7 @@ const REF_MAP = {
     showPage(1);
     syncPreview();
     enableLivePreview();
+    if (typeof window.pushToJSA === "function") window.pushToJSA();
   });
 
 })();
@@ -1816,7 +1957,3 @@ const REF_MAP = {
 
 </body>
 </html>
-
-
-
-
